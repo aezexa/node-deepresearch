@@ -291,18 +291,13 @@ async def update_references(
         if ref["url"]
     ]
 
-    await asyncio.gather(
-        *[
-            (
-                async def update_datetime(ref: Reference):
-                    if not ref["dateTime"]:
-                        ref["dateTime"] = await getLastModified(ref["url"]) or ""
+    async def update_datetime(ref: Reference):
+        if not ref["dateTime"]:
+            ref["dateTime"] = await getLastModified(ref["url"]) or ""
 
-                update_datetime(ref)
-            )
-            for ref in this_step["references"]
-        ]
-    )
+    tasks = [update_datetime(ref) for ref in this_step["references"]]
+
+    await asyncio.gather(*tasks)
 
     print("Updated references:", this_step["references"])
 
@@ -764,7 +759,7 @@ But then you realized you have asked them before. You decided to to think out of
             this_step["searchRequests"] = chooseK(
                 (
                     await dedup_queries(
-                        this_step["searchRequests"],, context["tokenTracker"]
+                        this_step["searchRequests"], [], context["tokenTracker"]
                     )
                 )["unique_queries"],
                 MAX_QUERIES_PER_STEP,
