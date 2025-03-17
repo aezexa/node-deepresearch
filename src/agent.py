@@ -175,7 +175,7 @@ def get_prompt(
 
     if allow_search:
         if all_keywords:
-        bad_requests_section = f"""
+            bad_requests_section = f"""
 - Avoid those unsuccessful search requests and queries:
 <bad-requests>
 {chr(10).join(all_keywords)}
