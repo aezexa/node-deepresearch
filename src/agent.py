@@ -75,8 +75,13 @@ def build_msgs_from_knowledge(knowledge: List[KnowledgeItem]) -> List[CoreMessag
     messages: List[CoreMessage] = []
     for k in knowledge:
         messages.append({"role": "user", "content": k["question"].strip()})
-        updated_section = f'<answer-datetime>\n{k["updated"]}\n</answer-datetime>' if k.get('updated') and (k['type'] == 'url' or k['type'] == 'side-info') else ''
-        references_section = f'<url>\n{k["references"][0]}\n</url>' if k.get('references') and k['type'] == 'url' else ''
+        updated_section = ""
+        if k.get('updated') and (k['type'] == 'url' or k['type'] == 'side-info'):
+            updated_section = f'<answer-datetime>\n{k["updated"]}\n</answer-datetime>'
+
+        references_section = ""
+        if k.get('references') and k['type'] == 'url':
+            references_section = f'<url>\n{k["references"][0]}\n</url>'
 
         a_msg = f"""
         {updated_section}
@@ -97,14 +102,18 @@ def compose_msgs(
 ) -> List[CoreMessage]:
     msgs = [*build_msgs_from_knowledge(knowledge), *messages]
 
-    answer_requirements = f"""
+    if final_answer_pip:
+        reviewer_lines = "".join([f'<reviewer-{idx + 1}>\n{p}\n</reviewer-{idx + 1}>\n' for idx, p in enumerate(final_answer_pip)])
+        answer_requirements = f"""
     <answer-requirements>
     - You provide deep, unexpected insights, identifying hidden patterns and connections, and creating "aha moments.".
     - You break conventional thinking, establish unique cross-disciplinary connections, and bring new perspectives to the user.
     - Follow reviewer's feedback and improve your answer quality.
-    {"".join([f'<reviewer-{idx + 1}>\n{p}\n</reviewer-{idx + 1}>\n' for idx, p in enumerate(final_answer_pip)]) if final_answer_pip else ""}
+    {reviewer_lines}
     </answer-requirements>
-    """ if final_answer_pip else ""
+    """
+    else:
+        answer_requirements = ""
 
     user_content = f"""
     {question}
