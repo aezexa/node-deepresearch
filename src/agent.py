@@ -132,37 +132,48 @@ def get_prompt(
     if allow_read:
         url_list = weightedURLToString(all_urls or [], 20)
 
-        action_sections.append(
-            f"""
-<action-visit>
-- Crawl and read full content from URLs, you can get the fulltext, last updated datetime etc of any URL. 
-- Must check URLs mentioned in <question> if any
-{url_list and f'    
-- Choose and visit relevant URLs below for more knowledge. higher weight suggests more relevant:
-<url-list>
-{url_list}
-</url-list>
-'.strip() or ''}
-</action-visit>
-"""
-        )
+        if url_list:
+            url_section = f"""
+            - Choose and visit relevant URLs below for more knowledge. higher weight suggests more relevant:
+            <url-list>
+            {url_list}
+            </url-list>
+            """
+        else:
+            url_section = ""
+
+        prompt_string = f"""
+        <action-visit>
+        - Crawl and read full content from URLs, you can get the fulltext, last updated datetime etc of any URL. 
+        - Must check URLs mentioned in <question> if any
+        {url_section.strip()}
+        </action-visit>
+        """
+
+        action_sections.append(prompt_string)
 
     if allow_search:
-        action_sections.append(
-            f"""
-<action-search>
-- Use web search to find relevant information
-- Build a search request based on the deep intention behind the original question and the expected answer format
-- Always prefer a single search request, only add another request if the original question covers multiple aspects or elements and one query is not enough, each request focus on one specific aspect of the original question 
-{all_keywords and f'
+        if all_keywords:
+        bad_requests_section = f"""
 - Avoid those unsuccessful search requests and queries:
 <bad-requests>
 {chr(10).join(all_keywords)}
 </bad-requests>
-'.strip() or ''}
+"""
+        else:
+            bad_requests_section = ""
+
+        action_sections.append(
+        f"""
+<action-search>
+- Use web search to find relevant information
+- Build a search request based on the deep intention behind the original question and the expected answer format
+- Always prefer a single search request, only add another request if the original question covers multiple aspects or elements and one query is not enough, each request focus on one specific aspect of the original question 
+{bad_requests_section.strip()}
 </action-search>
 """
-        )
+    )
+            
 
     if allow_answer:
         action_sections.append(
