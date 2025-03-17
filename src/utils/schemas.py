@@ -1,7 +1,7 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Annotated
 from datetime import datetime
 
-from pydantic import BaseModel, Field, conlist, constr, conint, conbool, condecimal
+from pydantic import BaseModel, Field, constr, conint, condecimal
 from enum import Enum
 
 MAX_URLS_PER_STEP = 4
@@ -70,10 +70,10 @@ class LanguageSchema(BaseModel):
 
 class QuestionEvaluateSchema(BaseModel):
     think: constr(max_length=500) = Field(description='A very concise explain of why those checks are needed.')
-    needsDefinitive: conbool()
-    needsFreshness: conbool()
-    needsPlurality: conbool()
-    needsCompleteness: conbool()
+    needsDefinitive: bool
+    needsFreshness: bool
+    needsPlurality: bool
+    needsCompleteness: bool
 
 class CodeGeneratorSchema(BaseModel):
     think: constr(max_length=200) = Field(description='Short explain or comments on the thought process behind the code.')
@@ -93,7 +93,7 @@ class QuerySchema(BaseModel):
 
 class QueryRewriterSchema(BaseModel):
     think: constr(max_length=500) = Field(description='Explain why you choose those search queries.')
-    queries: conlist(QuerySchema, max_items=MAX_QUERIES_PER_STEP) = Field(description=f'Array of search keywords queries, orthogonal to each other. Maximum {MAX_QUERIES_PER_STEP} queries allowed.')
+    queries: List[Annotated[QuerySchema, MaxLength(MAX_QUERIES_PER_STEP)]] = Field(description=f'Array of search keywords queries, orthogonal to each other. Maximum {MAX_QUERIES_PER_STEP} queries allowed.')
 
 class EvaluationType(Enum):
     definitive = "definitive"
@@ -106,31 +106,31 @@ class EvaluationType(Enum):
 class EvaluatorSchemaDefinitive(BaseModel):
     type: str = Field(default="definitive")
     think: constr(max_length=500) = Field(description='Explanation the thought process why the answer does not pass the evaluation.')
-    pass_: conbool() = Field(alias='pass')
+    pass_: bool = Field(alias='pass')
 
 class EvaluatorSchemaFreshness(BaseModel):
     type: str = Field(default="freshness")
     think: constr(max_length=500) = Field(description='Explanation the thought process why the answer does not pass the evaluation.')
     freshness_analysis: dict = Field(description='datetime of the **answer** and relative to today.')
-    pass_: conbool() = Field(alias='pass', description='If "days_ago" <= "max_age_days" then pass!')
+    pass_: bool = Field(alias='pass', description='If "days_ago" <= "max_age_days" then pass!')
 
 class EvaluatorSchemaPlurality(BaseModel):
     type: str = Field(default="plurality")
     think: constr(max_length=500) = Field(description='Explanation the thought process why the answer does not pass the evaluation.')
     plurality_analysis: dict = Field(description='Minimum and actual counts of items.')
-    pass_: conbool() = Field(alias='pass', description='If count_provided >= count_expected then pass!')
+    pass_: bool = Field(alias='pass', description='If count_provided >= count_expected then pass!')
 
 class EvaluatorSchemaAttribution(BaseModel):
     type: str = Field(default="attribution")
     think: constr(max_length=500) = Field(description='Explanation the thought process why the answer does not pass the evaluation.')
     exactQuote: Optional[constr(max_length=200)] = Field(description='Exact relevant quote and evidence from the source.')
-    pass_: conbool() = Field(alias='pass')
+    pass_: bool = Field(alias='pass')
 
 class EvaluatorSchemaCompleteness(BaseModel):
     type: str = Field(default="completeness")
     think: constr(max_length=500) = Field(description='Explanation the thought process why the answer does not pass the evaluation.')
     completeness_analysis: dict = Field(description='Expected and provided aspects.')
-    pass_: conbool() = Field(alias='pass')
+    pass_: bool = Field(alias='pass')
 
 class EvaluatorSchemaStrict(BaseModel):
     type: str = Field(default="strict")
