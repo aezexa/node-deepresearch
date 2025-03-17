@@ -1,36 +1,37 @@
 
 from typing import List, Dict, Optional, TypedDict, Union, Any
 
+# Assuming i18nJSON is defined elsewhere. Replace this with your actual implementation.
+i18nJSON = {}  # Placeholder for i18nJSON
 
-#Added TrackerContext class.
-class TrackerContext:
-    def __init__(self, tokenTracker: TokenTracker, actionTracker: ActionTracker):
-        self.tokenTracker = tokenTracker
-        self.actionTracker = actionTracker
+class LanguageModelUsage(TypedDict):
+    promptTokens: int
+    completionTokens: int
+    totalTokens: int
 
-
-
-class ActionTracker(EventEmitter):
+class ActionTracker:
     def __init__(self):
-        super().__init__()
-        self._state: ActionState = {
+        self._state: Dict[str, Any] = {
             'thisStep': {'action': 'answer', 'answer': '', 'references': [], 'think': ''},
             'gaps': [],
             'badAttempts': 0,
             'totalStep': 0
         }
+        self._listeners: List[callable] = []
 
     def track_action(self, new_state: Dict) -> None:
         self._state.update(new_state)
-        self.emit('action', self._state['thisStep'])
+        for listener in self._listeners:
+            listener(self._state['thisStep'])
 
     def track_think(self, think: str, lang: Optional[str] = None, params: Dict = {}) -> None:
         if lang:
             think = getI18nText(think, lang, params)
         self._state['thisStep']['think'] = think
-        self.emit('action', self._state['thisStep'])
+        for listener in self._listeners:
+            listener(self._state['thisStep'])
 
-    def get_state(self) -> ActionState:
+    def get_state(self) -> Dict[str, Any]:
         return self._state.copy()
 
     def reset(self) -> None:
@@ -41,39 +42,27 @@ class ActionTracker(EventEmitter):
             'totalStep': 0
         }
 
+    def on(self, event_name: str, listener: callable) -> None:
+        if event_name == 'action':
+            self._listeners.append(listener)
+        else:
+            raise ValueError(f"Unsupported event: {event_name}")
 
 
-class TokenTracker(EventEmitter):
+class TokenTracker:
     def __init__(self, budget: Optional[int] = None):
-        super().__init__()
-        self._usages: List[TokenUsage] = []
+        self._usages: List[Dict[str, Any]] = []
         self._budget: Optional[int] = budget
+        self._usage_listeners: List[callable] = []
 
-        # Assuming process.asyncLocalContext is not directly available in Python.
-        # This part of the code needs adaptation based on your environment.
-        # In a typical python environment, async local storage is handled by contextvars.
-        # This part of the code is heavily dependent on the environment.
-        # I will leave the general structure, but you will need to replace the asyncLocalContext logic.
-        # Example for contextvars is below, but I am commenting it out.
-        """
-        import contextvars
-
-        charge_amount = contextvars.ContextVar('charge_amount', default=0)
-
-        def on_usage_event():
-            if charge_amount.get() is not None:
-                charge_amount.set(self.get_total_usage()['totalTokens'])
-
-        self.on('usage', on_usage_event)
-        """
-
-    def track_usage(self, tool: str, usage: LanguageModelUsage) -> None:
-        u: TokenUsage = {'tool': tool, 'usage': usage}
+    def track_usage(self, tool: str, usage: 'LanguageModelUsage') -> None:
+        u: Dict[str, Any] = {'tool': tool, 'usage': usage}
         self._usages.append(u)
-        self.emit('usage', usage)
+        for listener in self._usage_listeners:
+            listener(usage)
 
-    def get_total_usage(self) -> LanguageModelUsage:
-        initial_usage: LanguageModelUsage = {'promptTokens': 0, 'completionTokens': 0, 'totalTokens': 0}
+    def get_total_usage(self) -> 'LanguageModelUsage':
+        initial_usage: 'LanguageModelUsage' = {'promptTokens': 0, 'completionTokens': 0, 'totalTokens': 0}
         return {
             'promptTokens': sum(u['usage']['promptTokens'] for u in self._usages),
             'completionTokens': sum(u['usage']['completionTokens'] for u in self._usages),
@@ -106,6 +95,11 @@ class TokenTracker(EventEmitter):
     def reset(self) -> None:
         self._usages = []
 
+    def on(self, event_name: str, listener: callable) -> None:
+        if event_name == 'usage':
+            self._usage_listeners.append(listener)
+        else:
+            raise ValueError(f"Unsupported event: {event_name}")
 
 
 class StepAction(TypedDict):
@@ -120,6 +114,11 @@ class TokenUsage(TypedDict):
     usage: LanguageModelUsage
 
 
+#Added TrackerContext class.
+class TrackerContext:
+    def __init__(self, tokenTracker: TokenTracker, actionTracker: ActionTracker):
+        self.tokenTracker = tokenTracker
+        self.actionTracker = actionTracker
 
 
 # Assuming CoreMessage, i18nJSON are defined elsewhere.
@@ -128,11 +127,6 @@ class TokenUsage(TypedDict):
 class CoreMessage(TypedDict):
     role: str
     content: str
-
-class LanguageModelUsage(TypedDict):
-    promptTokens: int
-    completionTokens: int
-    totalTokens: int
 
 class SERPQuery(TypedDict):
     q: str
