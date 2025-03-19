@@ -15,7 +15,7 @@ from typing import (
 
 from pydantic import BaseModel, Field
 
-from our_types import (  # Assuming action_types.py exists
+from action_types import (  # Assuming action_types.py exists
     AnswerAction,
     BoostedSearchSnippet,
     CoreMessage,
@@ -26,12 +26,11 @@ from our_types import (  # Assuming action_types.py exists
     SearchSnippet,
     StepAction,
     TrackerContext,
+    TokenTracker,
+    ActionTracker
 )
 from config import SEARCH_PROVIDER, STEP_SLEEP
-from schemas import MAX_QUERIES_PER_STEP, MAX_REFLECT_PER_STEP, MAX_URLS_PER_STEP
-
-from our_types import TokenTracker
-from our_types import ActionTracker
+from schemas import MAX_QUERIES_PER_STEP, MAX_REFLECT_PER_STEP, MAX_URLS_PER_STEP, Schemas
 
 
 async def sleep(ms: int):
