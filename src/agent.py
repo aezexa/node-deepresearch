@@ -15,6 +15,58 @@ MAX_REFLECT_PER_STEP = 2
 
 # --- Schema ---
 
+def get_language_prompt(question: str) -> Dict[str, str]:
+    return {
+        "system": """Identifies both the language used and the overall vibe of the question
+
+<rules>
+Combine both language and emotional vibe in a descriptive phrase, considering:
+  - Language: The primary language or mix of languages used
+  - Emotional tone: panic, excitement, frustration, curiosity, etc.
+  - Formality level: academic, casual, professional, etc.
+  - Domain context: technical, academic, social, etc.
+</rules>
+
+<examples>
+Question: "fam PLEASE help me calculate the eigenvalues of this 4x4 matrix ASAP!! [matrix details] got an exam tmrw 😭"
+Evaluation: {
+    "langCode": "en",
+    "langStyle": "panicked student English with math jargon"
+}
+
+Question: "Can someone explain how tf did Ferrari mess up their pit stop strategy AGAIN?! 🤦‍♂️ #MonacoGP"
+Evaluation: {
+    "langCode": "en",
+    "languageStyle": "frustrated fan English with F1 terminology"
+}
+
+Question: "肖老师您好，请您介绍一下最近量子计算领域的三个重大突破，特别是它们在密码学领域的应用价值吗？🤔"
+Evaluation: {
+    "langCode": "zh",
+    "languageStyle": "formal technical Chinese with academic undertones"
+}
+
+Question: "Bruder krass, kannst du mir erklären warum meine neural network training loss komplett durchdreht? Hab schon alles probiert 😤"
+Evaluation: {
+    "langCode": "de",
+    "languageStyle": "frustrated German-English tech slang"
+}
+
+Question: "Does anyone have insights into the sociopolitical implications of GPT-4's emergence in the Global South, particularly regarding indigenous knowledge systems and linguistic diversity? Looking for a nuanced analysis."
+Evaluation: {
+    "langCode": "en",
+    "languageStyle": "formal academic English with sociological terminology"
+}
+
+Question: "what's 7 * 9? need to check something real quick"
+Evaluation: {
+    "langCode": "en",
+    "languageStyle": "casual English"
+}
+</examples>""",
+        "user": question
+    }
+
 
 class Reference(BaseModel):
     exactQuote: str = Field(..., description="Exact relevant quote from the document, must be a soundbite, short and to the point, no fluff", max_length=30)
@@ -41,11 +93,86 @@ class VisitAction(BaseModel):
     )
 
 class Schemas:
-    def __init__(self, language_style: str = "English"):
-        self.language_style = language_style
+    def __init__(self):
+        self.language_style: str = 'formal English'
+        self.language_code: str = 'en'
+        self.client = genai.Client(api_key="")
+        self.gemini_config = {
+            "default": {
+                "model": "gemini-2.0-flash",
+                "temperature": 0,
+                "maxTokens": 2000
+            },
+            "tools": {
+                "coder": {"temperature": 0.7},
+                "searchGrounding": {"temperature": 0},
+                "dedup": {"temperature": 0.1},
+                "evaluator": {"temperature": 0.6, "maxTokens": 200},
+                "errorAnalyzer": {},
+                "queryRewriter": {"temperature": 0.1},
+                "agent": {"temperature": 0.7},
+                "agentBeastMode": {"temperature": 0.7},
+                "fallback": {"maxTokens": 8000, "model": "gemini-2.0-flash-lite"}
+            }
+        }
+        self.model_mapping = {
+            "agent": self.gemini_config["default"]["model"],
+            "coder": self.gemini_config["tools"].get("coder", {}).get("model", self.gemini_config["default"]["model"]),
+            "searchGrounding": self.gemini_config["tools"].get("searchGrounding", {}).get("model", self.gemini_config["default"]["model"]),
+            "dedup": self.gemini_config["tools"].get("dedup", {}).get("model", self.gemini_config["default"]["model"]),
+            "evaluator": self.gemini_config["tools"].get("evaluator", {}).get("model", self.gemini_config["default"]["model"]),
+            "errorAnalyzer": self.gemini_config["tools"].get("errorAnalyzer", {}).get("model", self.gemini_config["default"]["model"]),
+            "queryRewriter": self.gemini_config["tools"].get("queryRewriter", {}).get("model", self.gemini_config["default"]["model"]),
+            "agentBeastMode": self.gemini_config["tools"].get("agentBeastMode", {}).get("model", self.gemini_config["default"]["model"]),
+            "fallback": self.gemini_config["tools"].get("fallback", {}).get("model", self.gemini_config["default"]["model"]),
+        }
 
-    def set_language(self, question: str):
-        pass
+    def get_tool_config(self, model_type: str) -> Dict:
+        return self.gemini_config["tools"].get(model_type, self.gemini_config["default"])
+
+    def set_language(self, query: str):
+        prompt_data = get_language_prompt(query[:100])
+        system = prompt_data["system"]
+        prompt = prompt_data["user"] 
+        schema = self.get_language_schema()
+        model_type = 'evaluator'
+        model = self.model_mapping.get(model_type, self.gemini_config["default"]["model"])
+        config = self.get_tool_config(model_type)
+        temperature = config.get("temperature")
+        max_tokens = config.get("maxTokens")  
+
+        try:
+            response = self.client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                    response_mime_type='application/json',
+                    response_schema=schema,
+                    system_instruction=system
+                )
+            )
+
+            content_text = response.candidates[0].content.parts[0].text
+            generated_object = json.loads(content_text)
+
+            if generated_object:
+                self.language_code = generated_object.get("langCode", "en")
+                self.language_style = generated_object.get("langStyle", "formal English")
+                print(f"language", generated_object)
+        except Exception as e:
+            print(f"Error generating content: {e}")
+
+    def get_language_schema(self) -> Dict:
+        return {
+            "type": "object",
+            "properties": {
+                "langCode": {"type": "string", "description": "ISO 639-1 language code", "maxLength": 10},
+                "langStyle": {"type": "string", "description": "[vibe & tone] in [what language], such as formal english, informal chinese, technical german, humor english, slang, genZ, emojis etc.", "maxLength": 100}
+            },
+            "required": ["langCode", "langStyle"]
+        }
 
     def evaluate_question(self, current_question: str, context: Dict, schema_gen: 'Schemas') -> List[str]:
       return []
@@ -66,7 +193,7 @@ class Schemas:
         class ReflectAction(BaseModel):
             questionsToAnswer: conlist(str, max_length=MAX_REFLECT_PER_STEP) = Field(
                 ...,
-                description=f"Required when action='reflect'. Reflection and planing, generate a list of most important questions to fill the knowledge gaps to <og-question> {current_question} </og-question>. Maximum provide {MAX_REFLECT_PER_STEP} reflect questions."
+                description=f"Required when action='reflect'. Reflection and planning, generate a list of most important questions to fill the knowledge gaps to <og-question> {current_question} </og-question>. Maximum provide {MAX_REFLECT_PER_STEP} reflect questions."
             )
 
         class DynamicAgentSchema(BaseModel):
@@ -1183,7 +1310,7 @@ class ObjectGeneratorSafe: # OpenAI
     def __init__(self, token_tracker):
         self.token_tracker = token_tracker
         # self.client = openai.OpenAI(
-        #     api_key="AIzaSyCZkkE3iVc7ZXJ8xncVX-IK9MH1lu1NPQw",
+        #     api_key="",
         #     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         # )
         self.client = genai.Client(api_key="")
@@ -1321,8 +1448,10 @@ def serper_search(query: Dict) -> Dict:
 if __name__ == "__main__":
     question = "What is the capital of France?"
     response = get_response(question)
-    print(json.dumps(response, indent=2))
+    # print(json.dumps(response, indent=2))
+    print(response)
 
-    question2 = "What is the weather like in Paris?"
-    response2 = get_response(question2, existing_context = response['context'])
-    print(json.dumps(response2, indent=2))
+    # question2 = "What is the weather like in Paris?"
+    # response2 = get_response(question2, existing_context = response['context'])
+    # # print(json.dumps(response2, indent=2))
+    # print(response2)
